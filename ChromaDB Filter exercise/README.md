@@ -25,6 +25,7 @@ Retrieve all documents where `category == "vpn"` using a `where` filter.
 **Task A:** Find all documents whose text contains the word `"student"`.
 
 **Task B (Extension):** Narrow results to documents that contain `"student"` but do NOT contain `"password"`. Compare the count to Task A — how many were excluded?
+    
     - No results were excluded, as the words `"student"`and `"password"` are not present in same documents.
 
 ---
@@ -44,3 +45,11 @@ Run a semantic query for `"how do I print documents on campus"` restricted to:
     - Distance on both documents is over 1. This tells me that semantically the contents of these documents are not quite what the prompt was looking for.
 - Remove the `where` filter and run again — how does the result set change?
     - There is no change to the result, as only the two documents contain the word '"page"'.
+
+
+## Bonus Challenges
+
+1. Use `$gte` to find all documents from `year >= 2025`
+2. Use `$in` to find documents where `priority` is `"high"` or `"medium"`
+3. Combine metadata and text filters: find high-priority documents containing the word `"MFA"`
+4. Use `collection.get(include=[])` to retrieve only document IDs (no text, no metadata) — when is this useful?

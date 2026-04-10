@@ -136,7 +136,7 @@ result = collection.get(
     include=["documents", "metadatas"]
 )
 
-print_results("Exercise 1 ", result)
+print_results("Exercise 1", result)
 
 
 # ---------------------------------------------------------------------------
@@ -151,7 +151,7 @@ print("\n--- EXERCISE 2: Combined metadata filters ---")
 
 # Write your code here:
 
-result = collection.get(
+result_a = collection.get(
     where = {
         "$and": [
             {"priority": "high"},
@@ -162,9 +162,9 @@ result = collection.get(
     include=["documents", "metadatas"]
 )
 
-print_results("Exercise 2A ", result)
+print_results("Exercise 2A", result_a)
 
-result = collection.get(
+result_b = collection.get(
     where = {
         "$or": [
             {"category": "software"},
@@ -174,7 +174,7 @@ result = collection.get(
     include=["documents", "metadatas"]
 )
 
-print_results("Exercise 2B ", result)
+print_results("Exercise 2B", result_b)
 
 # ---------------------------------------------------------------------------
 # EXERCISE 3 — Full text search with where_document
@@ -189,14 +189,14 @@ print("\n--- EXERCISE 3: Full text search ---")
 
 # Write your code here:
 
-result = collection.get(
+result_a = collection.get(
     where_document = {"$contains": "student"},
     include=["documents", "metadatas"]
 )
 
-print_results("Exercise 3A ", result)
+print_results("Exercise 3A", result_a)
 
-result = collection.get(
+result_b = collection.get(
     where_document = {
         "$and": [
             {"$contains": "student"},
@@ -206,7 +206,7 @@ result = collection.get(
     include=["documents", "metadatas"]
 )
 
-print_results("Exercise 3B ", result)
+print_results("Exercise 3B", result_b)
 
 # ---------------------------------------------------------------------------
 # EXERCISE 4 — Combining semantic query with metadata and text filters
@@ -230,4 +230,66 @@ result = collection.query(
     include = ["documents", "metadatas", "distances"]
 )
 
-print_results("Exercise 4 ", result, show_distances = True)
+print_results("Exercise 4", result, show_distances = True)
+
+# ---------------------------------------------------------------------------
+# BONUS 1 — Using $gte
+# ---------------------------------------------------------------------------
+# TODO: Use $gte to find all documents from year >= 2025
+
+print("\n--- BONUS 1 — Using $gte ---")
+
+# Write your code here:
+
+result = collection.get(
+    where = {"year": {"$gte": 2025}},
+    include=["documents", "metadatas"]
+)
+
+print_results("Bonus 1", result)
+
+# ---------------------------------------------------------------------------
+# BONUS 2 — Using $in
+# ---------------------------------------------------------------------------
+# TODO: Use $in to find documents where priority is "high" or "medium"
+
+print("\n--- BONUS 2 — Using $in ---")
+
+# Write your code here:
+
+result = collection.get(
+    where = {"priority": {"$in": ["high", "medium"]}},
+    include=["documents", "metadatas"]
+)
+
+print_results("Bonus 2", result)
+
+# ---------------------------------------------------------------------------
+# BONUS 3 - Metadata and text filters
+# ---------------------------------------------------------------------------
+# TODO: Combine metadata and text filters: find high-priority documents containing the word "MFA"
+
+print("\n--- BONUS 3 - Metadata and text filters ---")
+
+# Write your code here:
+
+result = collection.get(
+    where = {"priority": "high"},
+    where_document = {"$contains": "MFA"},
+    include=["documents", "metadatas"]
+)
+
+print_results("Bonus 3", result)
+
+# ---------------------------------------------------------------------------
+# BONUS 4 - Document IDs
+# ---------------------------------------------------------------------------
+# TODO: Use collection.get(include=[]) to retrieve only document IDs (no text, no metadata) — when is this useful?
+
+print("\n--- BONUS 4 - Use collection.get(include=[]) ---")
+
+# Write your code here:
+
+result = collection.get(include=[])
+
+print("Bonus 4", result["ids"])
