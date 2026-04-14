@@ -47,9 +47,13 @@ class ProcurementState(TypedDict):
     quantity: int
     messages: list[dict]
 
+
+# Interrupt flag to indicate waiting for manager approval
+WAITING_FOR_APPROVAL = False
+
 # ─── LLM (used only for the notification step to make it feel "agentic") ─────
 
-llm = ChatGoogleGenerativeAI(model="gemini-3.1-flash-lite-preview")
+llm = ChatGoogleGenerativeAI(model="gemma-4-31b-it")
 
 # ─── Tools ────────────────────────────────────────────────────────────────────
 def get_unit_price(vendor: str) -> float:
@@ -63,9 +67,26 @@ def get_unit_price(vendor: str) -> float:
 tools = [get_unit_price]
 llm_with_tools = llm.bind_tools(tools)
 
+# ─── Node routers ──────────────────────────────────────────────────────────
+
+def approval_router(state: ProcurementState):
+    total = state["best_quote"]["total"]
+
+    choice = "request_approval" if total > 10_000 else "auto_approve"
+
+    return choice
+
+def post_approval_router(state: ProcurementState):
+    status = state["approval_status"].lower()
+
+    if "reject" in status:
+        return "rejected"
+
+    return "approved"
+
 # ─── Node functions ──────────────────────────────────────────────────────────
 
-def parse_request_llm(state: ProcurementState) -> dict:
+def parse_request_llm(state):
     print("\n[Step 0] Parsing request...")
 
     prompt = f"""
@@ -77,11 +98,23 @@ Request:
 """
 
     response = llm.invoke(prompt)
+
     content = response.content
 
-    import re, json
-    match = re.search(r"\{.*\}", content, re.DOTALL)
-    data = json.loads(match.group())
+    # 🔥 handle structured response
+    if isinstance(content, list):
+        text_parts = [
+            c.get("text", "")
+            for c in content
+            if isinstance(c, dict) and c.get("type") == "text"
+        ]
+        content = "".join(text_parts)
+
+    # extract JSON safely
+    start = content.find("{")
+    end = content.rfind("}") + 1
+
+    data = json.loads(content[start:end])
 
     return {"quantity": data["quantity"]}
 
@@ -145,6 +178,7 @@ def compare_quotes(state: ProcurementState) -> dict:
 
 def request_approval(state: ProcurementState) -> dict:
     """Step 4: Human-in-the-loop — request manager approval for orders > €10,000."""
+    global WAITING_FOR_APPROVAL
     best = state["best_quote"]
     print("\n[Step 4] Order exceeds €10,000 — manager approval required!")
     print(f"   Sending approval request to manager...")
@@ -159,26 +193,38 @@ def request_approval(state: ProcurementState) -> dict:
    # print(f"   │  Delivery: {delivery_str:<33}│")
     print(f"   └─────────────────────────────────────────────┘")
 
+    WAITING_FOR_APPROVAL = True
+
     # ── THIS IS WHERE THE MAGIC HAPPENS ──
     # interrupt() freezes the entire graph state into the checkpoint store.
     # The process can now exit completely. When resumed later (even days later),
     # execution continues right here with the resume value.
     decision = interrupt({
-        "message": f"Approve purchase of 50 laptops from {best['vendor']} for €{best['total']:,}?",
+        "message": f"Approve purchase of {qty} laptops from {best['vendor']} for €{best['total']:,}?",
         "vendor": best["vendor"],
         "amount": best["total"],
     })
 
     print(f"\n[Step 4] Manager responded: {decision}")
-    return {"approval_status": decision}
+    decision_text = str(decision).lower()
 
+    if "reject" in decision_text:
+        status = "rejected"
+    else:
+        status = "approved"
+
+    return {
+        "approval_status": status,
+        "approval_reason": decision  # optional but VERY useful
+}
+
+def auto_approve(state: ProcurementState) -> dict:
+    print("\n[Auto Approval] Skipping manager approval")
+
+    return {"approval_status": "auto-approved"}
 
 def submit_purchase_order(state: ProcurementState) -> dict:
     """Step 5: Submit the purchase order to the ERP system."""
-    if "reject" in state["approval_status"].lower():
-        print("\n[Step 5] Purchase REJECTED by manager. Aborting.")
-        return {"po_number": "REJECTED"}
-
     print("\n[Step 5] Submitting purchase order to ERP system...")
     time.sleep(1)
     po_number = "PO-2026-00342"
@@ -191,24 +237,39 @@ def submit_purchase_order(state: ProcurementState) -> dict:
 def notify_employee(state: ProcurementState) -> dict:
     """Step 6: Use LLM to draft and send a notification to the employee."""
     print("\n[Step 6] Notifying employee...")
+    
+    qty = state["quantity"]
 
     if state["po_number"] == "REJECTED":
         prompt = (
             f"Write a brief, professional notification (2-3 sentences) to an employee "
-            f"that their purchase request for 50 laptops was rejected by the manager. "
+            f"that their purchase request for {qty} laptops was rejected by the manager. "
             f"Be empathetic but concise."
+            f"Return ONLY the final notification. No thinking. No options. No drafts."
         )
     else:
         prompt = (
             f"Write a brief, professional notification (2-3 sentences) to an employee "
             f"that their purchase request has been approved and processed. "
-            f"Details: 50 laptops from {state['best_quote']['vendor']}, "
+            f"Details: {qty} laptops from {state['best_quote']['vendor']}, "
             f"€{state['best_quote']['total']:,}, PO number {state['po_number']}, "
-            f"delivery in {state['best_quote']['delivery_days']} business days."
+            #f"delivery in {state['best_quote']['delivery_days']} business days."
+            f"Return ONLY the final notification. No thinking. No options. No drafts."
         )
 
     response = llm.invoke(prompt)
-    notification = response.content
+    content = response.content
+
+    if isinstance(content, list):
+        text_parts = [
+            c.get("text", "")
+            for c in content
+            if isinstance(c, dict) and c.get("type") == "text"
+        ]
+        notification = "".join(text_parts)
+    else:
+        notification = content
+
     print(f"   Employee notification sent:")
     print(f"   \"{notification}\"")
     return {"notification": notification}
@@ -226,6 +287,7 @@ builder.add_node("parse_request", parse_request_llm)
 builder.add_node("lookup_vendors", lookup_vendors)
 builder.add_node("fetch_pricing", fetch_pricing)
 builder.add_node("compare_quotes", compare_quotes)
+builder.add_node("auto_approve", auto_approve)
 builder.add_node("request_approval", request_approval)
 builder.add_node("submit_purchase_order", submit_purchase_order)
 builder.add_node("notify_employee", notify_employee)
@@ -234,11 +296,15 @@ builder.add_edge(START, "parse_request")
 builder.add_edge("parse_request", "lookup_vendors")
 builder.add_edge("lookup_vendors", "fetch_pricing")
 builder.add_edge("fetch_pricing", "compare_quotes")
-builder.add_edge("compare_quotes", "request_approval")
-builder.add_edge("request_approval", "submit_purchase_order")
+builder.add_conditional_edges("compare_quotes", approval_router)
+builder.add_edge("auto_approve", "submit_purchase_order")
+builder.add_conditional_edges("request_approval", post_approval_router,{
+        "approved": "submit_purchase_order",
+        "rejected": "notify_employee",
+    }
+)
 builder.add_edge("submit_purchase_order", "notify_employee")
 builder.add_edge("notify_employee", END)
-
 
 # ─── Checkpointer (SQLite — survives process restarts!) ──────────────────────
 
@@ -254,25 +320,26 @@ def run_first_invocation(graph):
     print("=" * 60)
     print("  FIRST INVOCATION — Employee submits purchase request")
     print("=" * 60)
-    print("\nEmployee request: \"Order 50 laptops for the new engineering team\"")
+    print("\nEmployee request: \"Order 10 laptops for the new engineering team\"")
 
     result = graph.invoke(
-        {"request": "Order 50 laptops for the new engineering team"},
+        {"request": "Order 10 laptops for the new engineering team"},
         config,
     )
 
-    # After interrupt, the graph returns with __interrupt__ info
-    print("\n" + "=" * 60)
-    print("AGENT SUSPENDED — waiting for manager approval")
-    print("=" * 60)
-    print("\n  The agent process can now exit completely.")
-    print("  All state (vendors, pricing, best quote) is frozen in SQLite.")
-    print(f"  Checkpoint DB: {DB_PATH}")
-    print(f"  Thread ID: {THREAD_ID}")
-    print("\n  In a real system, the manager gets a Slack/email notification.")
-    print("  They might respond hours or even days later.\n")
-    print("  To resume, run:")
-    print(f"    python {os.path.basename(__file__)} --resume\n")
+    if WAITING_FOR_APPROVAL == True:
+        # After interrupt, the graph returns with __interrupt__ info
+        print("\n" + "=" * 60)
+        print("AGENT SUSPENDED — waiting for manager approval")
+        print("=" * 60)
+        print("\n  The agent process can now exit completely.")
+        print("  All state (vendors, pricing, best quote) is frozen in SQLite.")
+        print(f"  Checkpoint DB: {DB_PATH}")
+        print(f"  Thread ID: {THREAD_ID}")
+        print("\n  In a real system, the manager gets a Slack/email notification.")
+        print("  They might respond hours or even days later.\n")
+        print("  To resume, run:")
+        print(f"    python {os.path.basename(__file__)} --resume\n")
 
 
 def run_second_invocation(graph):
@@ -303,6 +370,10 @@ def run_second_invocation(graph):
         Command(resume="Approved — go ahead with the purchase."),
         config,
     )
+
+    # Remember to unset the interrupt flag so that if we run again, it doesn't immediately interrupt again
+    global WAITING_FOR_APPROVAL
+    WAITING_FOR_APPROVAL = False
 
     print("\n" + "=" * 60)
     print("PROCUREMENT COMPLETE")
