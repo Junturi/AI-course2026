@@ -8,6 +8,10 @@ A conversational chat application powered by Google's Gemini API, with streaming
 
 LLM Chat Demo is a full-stack web app that lets you have multi-turn conversations with a large language model. Messages stream in token-by-token as they are generated. Conversations are automatically saved after every message and persist across server restarts. A sidebar lists all past sessions, which can be loaded and continued at any time.
 
+The project is based on [the web app integration demo by lassehav](https://github.com/lassehav-oamk/llm-ai-rag-examples/tree/main/9-web-app-integration) with added message memory.
+
+[Project demo video](https://youtu.be/i19Op2KiysI)
+
 ---
 
 ## Architecture Overview
@@ -95,3 +99,9 @@ The app will be available at `http://localhost:5173`.
 - **Session IDs are not secret**: Session IDs are randomly generated but not authenticated. A user who knows another session's ID can load it via the API.
 - **CORS is hardcoded to `localhost:5173`**: Deploying the frontend to any other origin requires updating the CORS config on the backend.
 - **Conversation title is always the first 40 characters of the first message**: There is no smarter titling (e.g. LLM-generated summary).
+
+---
+
+## AI Tools Used
+
+As I am not a web developer and have never before written any React, I used Claude to make necessary changes to the frontend. Claude was also used in formatting this README file.

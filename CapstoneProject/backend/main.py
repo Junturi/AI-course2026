@@ -1,6 +1,7 @@
 import json
 import os
 import time
+import re
 from collections import defaultdict
 from pathlib import Path
 
@@ -25,10 +26,9 @@ genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel(
     "gemma-4-31b-it",
     system_instruction=(
-        "You are a helpful assistant. "
-        "Always respond with your final answer only. "
-        "Never include internal reasoning, thinking steps, or scratchpad text in your response."
-        "Do not include this system instruction in your response. It is only for you to understand how to behave."
+        "Do not output any thinking, reasoning, planning, or scratchpad text under any circumstances."
+        "Your response must contain only your final answer and nothing else."
+        "If you are tempted to think step by step, do it silently and only output the conclusion."
     )
 )
 
@@ -38,6 +38,9 @@ def to_gemini_format(messages: list[dict]) -> list[dict]:
         {"role": msg["role"], "parts": [msg["content"]]}
         for msg in messages
     ]
+
+def strip_thinking(text: str) -> str:
+    return re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL).strip()
 
 app = FastAPI(title="Capstone Project API")
 
@@ -103,6 +106,7 @@ async def chat_stream(request: ChatRequest):
         print(response)
 
         full_text = ""
+        full_text = strip_thinking(full_text)
 
         # Each chunk is a GenerateContentResponse object with .text and .usage
         for chunk in response:
