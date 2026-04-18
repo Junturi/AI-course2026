@@ -5,3 +5,4 @@ chroma_db_data
 *.db
 .env
 node_modules/
+conversations.json
