@@ -8,7 +8,7 @@ A conversational chat application powered by Google's Gemini API, with streaming
 
 LLM Chat Demo is a full-stack web app that lets you have multi-turn conversations with a large language model. Messages stream in token-by-token as they are generated. Conversations are automatically saved after every message and persist across server restarts. A sidebar lists all past sessions, which can be loaded and continued at any time.
 
-The project is based on [the web app integration demo by lassehav](https://github.com/lassehav-oamk/llm-ai-rag-examples/tree/main/9-web-app-integration) with added message memory.
+The project is based on [the web app integration demo by lassehav](https://github.com/lassehav-oamk/llm-ai-rag-examples/tree/main/9-web-app-integration) with added conversation memory.
 
 [Project demo video](https://youtu.be/i19Op2KiysI)
 
