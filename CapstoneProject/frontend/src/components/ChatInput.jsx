@@ -23,7 +23,7 @@ export default function ChatInput({ onSend, disabled }) {
         value={text}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder="Message Gemini… (Enter to send, Shift+Enter for newline)"
+        placeholder="Message Gemini…"
         disabled={disabled}
         rows={2}
         autoFocus

@@ -2,6 +2,7 @@ import json
 import os
 import time
 from collections import defaultdict
+from pathlib import Path
 
 import google.generativeai as genai
 from dotenv import load_dotenv
@@ -31,6 +32,13 @@ model = genai.GenerativeModel(
     )
 )
 
+def to_gemini_format(messages: list[dict]) -> list[dict]:
+    # Convert messages to Gemini's expected format: {"role": "user"/"assistant", "parts": [content]}
+    return [
+        {"role": msg["role"], "parts": [msg["content"]]}
+        for msg in messages
+    ]
+
 app = FastAPI(title="Capstone Project API")
 
 app.add_middleware(
@@ -51,6 +59,27 @@ class ChatRequest(BaseModel):
     session_id: str = "default"
 
 #-----------------------------------------#
+#             IN-MEMORY STORAGE           #
+#-----------------------------------------#
+
+conversations: dict[str, dict] = {}
+
+CONVERSATIONS_FILE = Path("conversations.json")
+
+def load_conversations() -> dict:
+    if CONVERSATIONS_FILE.exists():
+        with open(CONVERSATIONS_FILE, "r") as f:
+            return json.load(f)
+    return {}
+
+def save_conversations():
+    with open(CONVERSATIONS_FILE, "w") as f:
+        json.dump(conversations, f, indent=2)
+
+# Load from disk on startup
+conversations: dict[str, dict] = load_conversations()
+
+#-----------------------------------------#
 #                 ENDPOINTS               #
 #-----------------------------------------#
 
@@ -69,19 +98,35 @@ async def chat_stream(request: ChatRequest):
 
     def generate():
         # Build conversation history and new user message
-        contents = request.history + [{"role": "user", "parts": [request.message]}]
+        contents = to_gemini_format(request.history) + [{"role": "user", "parts": [request.message]}]
         response = model.generate_content(contents, stream=True)
         print(response)
+
+        full_text = ""
 
         # Each chunk is a GenerateContentResponse object with .text and .usage
         for chunk in response:
             if chunk.text:
+                full_text += chunk.text
                 event = json.dumps({"type": "text", "content": chunk.text})
                 yield f"data: {event}\n\n"
             
-        # After streaming is done, send a final event
-        done_event = json.dumps({"type": "done"})
+        # Save conversation
+        updated_messages = request.history + [
+            {"role": "user", "content": request.message},
+            {"role": "assistant", "content": full_text},
+        ]
 
+        conversations[request.session_id] = {
+            "session_id": request.session_id,
+            "title": request.message[:40],
+            "updated_at": time.time(),
+            "messages": updated_messages,
+        }
+        save_conversations()
+
+        # Finally, send 'done' event
+        done_event = json.dumps({"type": "done"})
         yield f"data: {done_event}\n\n"
 
     return StreamingResponse(
@@ -92,3 +137,26 @@ async def chat_stream(request: ChatRequest):
             "X-Accel-Buffering": "no"  # Disable buffering for nginx
         }
     )
+
+@app.get("/conversations")
+def list_conversations():
+    """
+    List all conversations with metadata (session_id, title, updated_at) sorted by most recent.
+    """
+    return [
+        {
+            "session_id": c["session_id"],
+            "title": c["title"],
+            "updated_at": c["updated_at"],
+        }
+        for c in sorted(conversations.values(), key=lambda x: x["updated_at"], reverse=True)
+    ]
+
+@app.get("/conversations/{session_id}")
+def get_conversation(session_id: str):
+    """
+    Get full conversation history for a given session_id. Returns 404 if not found.
+    """
+    if session_id not in conversations:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return conversations[session_id]

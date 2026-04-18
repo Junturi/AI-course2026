@@ -3,7 +3,7 @@ export default function MessageList({ messages, isStreaming }) {
         return (
       <div className="messages empty">
         <p className="empty-hint">
-          Ask anything. Toggle <strong>Streaming</strong> in the header to compare the experience.
+          Ask anything. Gemini is here to help!
         </p>
       </div>
     )

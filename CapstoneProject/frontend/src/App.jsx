@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import ChatInput from './components/ChatInput'
 import MessageList from './components/MessageList'
+import Sidebar from './components/Sidebar'
 
 const API_BASE = 'http://localhost:8000'
 
@@ -11,6 +12,17 @@ export default function App() {
     const [messages, setMessages] = useState([])
     const [isStreaming, setIsStreaming] = useState(false)
     const [error, setError] = useState(null)
+    const [sessions, setSessions] = useState([])
+    const [sessionId, setSessionId] = useState(SESSION_ID)
+
+    // Fetch past sessions when app loads + after every message
+    async function fetchSessions() {
+        const res = await fetch(`${API_BASE}/conversations`)
+        const data = await res.json()
+        setSessions(data)
+    }
+
+    useEffect(() => { fetchSessions() }, [])
 
     async function sendMessage(text) {
         if (!text.trim() || isStreaming) return
@@ -28,11 +40,25 @@ export default function App() {
 
         try {
             await streamResponse(text, history, updatedMessages)
+            await fetchSessions() 
         } catch (err) {
             setError(err.message)
         } finally {
             setIsStreaming(false)
         }
+    }
+
+    async function loadSession(id) {
+        const res = await fetch(`${API_BASE}/conversations/${id}`)
+        const data = await res.json()
+        setMessages(data.messages)
+        setSessionId(id)
+    }
+
+    function newChat() {
+        setMessages([])
+        setSessionId(`session-${Math.random().toString(36).slice(2, 9)}`)
+        setError(null)
     }
 
 //-------------------------------------------------------------------------//
@@ -47,7 +73,7 @@ export default function App() {
         const response = await fetch(`${API_BASE}/chat/stream`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message, history, session_id: SESSION_ID }),
+            body: JSON.stringify({ message, history, session_id: sessionId }),
         })
 
         if (!response.ok) {
@@ -103,24 +129,32 @@ export default function App() {
     }
 
     return (
-    <div className="app">
-      <header className="header">
-        <div className="header-title">
-          <h1>LLM Chat Demo</h1>
-          <span className="session-id">Session: {SESSION_ID}</span>
+    <div className="app-layout">
+        <Sidebar
+            sessions={sessions}
+            currentSessionId={sessionId}
+            onSelect={loadSession}
+            onNew={newChat}
+        />
+        <div className="app">
+        <header className="header">
+            <div className="header-title">
+            <h1>LLM Chat Demo</h1>
+            <span className="session-id">Session: {sessionId}</span>
+            </div>
+            <div className="header-controls">
+            <button onClick={clearChat} className="btn-clear" disabled={isStreaming}>
+                Clear chat
+            </button>
+            </div>
+        </header>
+
+        <ChatInput onSend={sendMessage} disabled={isStreaming} />
+
+        {error && <div className="error-banner">{error}</div>}
+
+        <MessageList messages={messages} isStreaming={isStreaming} />
         </div>
-        <div className="header-controls">
-          <button onClick={clearChat} className="btn-clear" disabled={isStreaming}>
-            Clear chat
-          </button>
-        </div>
-      </header>
-
-      <ChatInput onSend={sendMessage} disabled={isStreaming} />
-
-      {error && <div className="error-banner">{error}</div>}
-
-      <MessageList messages={messages} isStreaming={isStreaming} />
     </div>
   )
 }
