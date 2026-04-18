@@ -16,7 +16,7 @@ The project is based on [the web app integration demo by lassehav](https://githu
 
 ## Architecture Overview
 
-![App architecture](Architecture.jpeg)
+![App architecture](Architecture.png)
 
 - **Frontend**: React app (Vite) running on `localhost:5173`. Sends chat messages via HTTP POST and reads the response as a Server-Sent Events stream using the Fetch `ReadableStream` API.
 - **Backend**: FastAPI server running on `localhost:8000`. Receives messages, maintains conversation state in memory, streams Gemini responses back to the client using `StreamingResponse`, and persists conversations to a local JSON file.
